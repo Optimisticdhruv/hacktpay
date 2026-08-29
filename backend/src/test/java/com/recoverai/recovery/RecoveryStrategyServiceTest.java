@@ -41,7 +41,7 @@ class RecoveryStrategyServiceTest {
     }
 
     private RecoveryStrategyService service(boolean enabled, OllamaStrategyClient client) {
-        RecoveryProperties properties = new RecoveryProperties("memory", false, null, null, new RecoveryProperties.Recovery(3, 24, false), new RecoveryProperties.Thresholds(1, .70, .60, .60, 5_000_000), new RecoveryProperties.Ollama(enabled, "http://localhost:11434", "qwen2.5:3b", 30), "http://localhost:5173");
+        RecoveryProperties properties = new RecoveryProperties("memory", false, null, null, new RecoveryProperties.Recovery(3, 24, false), new RecoveryProperties.Thresholds(1, .70, .60, .60, 5_000_000), new RecoveryProperties.Ollama(enabled, "http://localhost:11434", "qwen2.5:3b", 30), new RecoveryProperties.Security(false), new RecoveryProperties.Detection(false), "http://localhost:5173");
         ThresholdStrategyEngine thresholds = new ThresholdStrategyEngine(properties);
         return new RecoveryStrategyService(properties, client, new FallbackStrategyEngine(properties, thresholds), thresholds);
     }

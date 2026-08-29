@@ -3,6 +3,8 @@ package com.recoverai.evaluation;
 import com.recoverai.domain.*;
 import com.recoverai.recovery.FallbackStrategyEngine;
 import com.recoverai.recovery.PolicyEngine;
+import com.recoverai.domain.EvaluationRun;
+import com.recoverai.repository.EvaluationRunRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -10,6 +12,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.UUID;
 
 /**
  * Deterministic synthetic evaluation. It never creates Razorpay links or changes
@@ -19,10 +22,12 @@ import java.util.Random;
 public class EvaluationService {
     private final FallbackStrategyEngine strategy;
     private final PolicyEngine policy;
+    private final EvaluationRunRepository runs;
 
-    public EvaluationService(FallbackStrategyEngine strategy, PolicyEngine policy) {
+    public EvaluationService(FallbackStrategyEngine strategy, PolicyEngine policy, EvaluationRunRepository runs) {
         this.strategy = strategy;
         this.policy = policy;
+        this.runs = runs;
     }
 
     public EvaluationResult run(int requestedSize, long seed) {
@@ -60,9 +65,14 @@ public class EvaluationService {
             recovered += recoveredForCase;
             metrics.put(type, current.add(amount, actionable ? amount : 0, recoveredForCase));
         }
-        return new EvaluationResult("SIMULATED", size, seed, atRisk, attempted, recovered,
+        EvaluationResult result = new EvaluationResult("SIMULATED", size, seed, atRisk, attempted, recovered,
                 attempted == 0 ? 0 : ((double) recovered / attempted), approved, blocked, metrics);
+        runs.save(new EvaluationRun(UUID.randomUUID().toString(), result, Instant.now()));
+        return result;
     }
+
+    public java.util.Optional<EvaluationRun> latest() { return runs.latest(); }
+    public List<EvaluationRun> history() { return runs.findRecent(12); }
 
     public record EvaluationResult(String dataClassification, int datasetSize, long seed, long totalAtRisk,
                                    long totalAttempted, long totalRecovered, double recoveryRate,

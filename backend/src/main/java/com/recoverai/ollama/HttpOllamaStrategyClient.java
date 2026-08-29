@@ -18,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /** Local-only Ollama client. It sends a reduced operational context and no customer PII or secrets. */
 @Service
@@ -28,8 +29,19 @@ public class HttpOllamaStrategyClient implements OllamaStrategyClient {
             Use only the supplied fields. Never claim payment success unless transactionStatus is CAPTURED. Do not recommend customer contact when contactAllowed is false.
             Return JSON only with diagnosis, recoverabilityScore (0.0 to 1.0), recommendedAction, delayMinutes, and concise evidence-based reasons.
             Allowed recommendedAction values: NO_ACTION, WAIT_AND_RETRY, SEND_REMINDER, CREATE_PAYMENT_LINK, ESCALATE_TO_HUMAN.
+            recoverabilityScore must be a decimal probability such as 0.72, never a percentage such as 72. Do not invent limits, policies, payment outcomes, or customer facts that are not in the supplied fields.
+            diagnosis must be a short uppercase identifier using underscores, for example TRANSIENT_PAYMENT_FAILURE.
+            For a PAYMENT_FAILURE with transactionStatus FAILED, contactAllowed true, activePaymentLink false, fewer than 3 attempts, and at least 3 previousSuccessfulPayments, recommend CREATE_PAYMENT_LINK with a score of at least 0.70 unless another supplied field makes it unsafe.
             Prefer ESCALATE_TO_HUMAN when the case is unsafe or ambiguous.
             """;
+    private static final Map<String, RecoveryAction> ACTION_ALIASES = Map.of(
+            "RETRY", RecoveryAction.WAIT_AND_RETRY,
+            "WAIT", RecoveryAction.WAIT_AND_RETRY,
+            "REMINDER", RecoveryAction.SEND_REMINDER,
+            "PAYMENT_LINK", RecoveryAction.CREATE_PAYMENT_LINK,
+            "CREATE_LINK", RecoveryAction.CREATE_PAYMENT_LINK,
+            "ESCALATE", RecoveryAction.ESCALATE_TO_HUMAN
+    );
     private final RecoveryProperties properties;
     private final ObjectMapper json;
     private final HttpClient http;
@@ -81,23 +93,45 @@ public class HttpOllamaStrategyClient implements OllamaStrategyClient {
     }
 
     StrategyDecision toDecision(OllamaResponse response) {
-        if (response == null || response.diagnosis() == null || !response.diagnosis().matches("[A-Za-z0-9_]{3,80}")) throw new OllamaUnavailableException("INVALID_AI_RESPONSE", "Ollama diagnosis is invalid");
-        if (response.recoverabilityScore() == null || !Double.isFinite(response.recoverabilityScore()) || response.recoverabilityScore() < 0 || response.recoverabilityScore() > 1) throw new OllamaUnavailableException("INVALID_SCORE", "Ollama score is invalid");
+        if (response == null) throw new OllamaUnavailableException("INVALID_AI_RESPONSE", "Ollama response is missing");
+        String diagnosis = normalizeDiagnosis(response.diagnosis());
+        double score = normalizeScore(response.recoverabilityScore());
         if (response.recommendedAction() == null) throw new OllamaUnavailableException("INVALID_ACTION", "Ollama action is missing");
-        RecoveryAction action;
-        try { action = RecoveryAction.valueOf(response.recommendedAction().trim().toUpperCase(Locale.ROOT)); }
-        catch (IllegalArgumentException e) { throw new OllamaUnavailableException("INVALID_ACTION", "Ollama action is unsupported", e); }
+        RecoveryAction action = normalizeAction(response.recommendedAction());
         if (response.delayMinutes() == null || response.delayMinutes() < 0 || response.delayMinutes() > 43_200) throw new OllamaUnavailableException("INVALID_AI_RESPONSE", "Ollama delay is invalid");
         if (response.reasons() == null || response.reasons().isEmpty() || response.reasons().stream().anyMatch(reason -> reason == null || reason.isBlank())) throw new OllamaUnavailableException("INVALID_AI_RESPONSE", "Ollama reasons are invalid");
-        return new StrategyDecision(response.diagnosis().toUpperCase(Locale.ROOT), response.recoverabilityScore(), action, response.delayMinutes(), response.reasons().stream().map(String::trim).limit(5).toList(), StrategySource.OLLAMA);
+        return new StrategyDecision(diagnosis, score, action, response.delayMinutes(), response.reasons().stream().map(String::trim).limit(5).toList(), StrategySource.OLLAMA);
+    }
+
+    private String normalizeDiagnosis(String value) {
+        if (value == null) throw new OllamaUnavailableException("INVALID_AI_RESPONSE", "Ollama diagnosis is missing");
+        String normalized = value.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_").replaceAll("^_+|_+$", "");
+        if (!normalized.matches("[A-Z0-9_]{3,80}")) throw new OllamaUnavailableException("INVALID_AI_RESPONSE", "Ollama diagnosis is invalid");
+        return normalized;
+    }
+
+    private double normalizeScore(Double value) {
+        if (value == null || !Double.isFinite(value) || value < 0 || value > 100) throw new OllamaUnavailableException("INVALID_SCORE", "Ollama score is invalid");
+        return value > 1 ? value / 100.0 : value;
+    }
+
+    private RecoveryAction normalizeAction(String value) {
+        String normalized = value.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_").replaceAll("^_+|_+$", "");
+        try { return RecoveryAction.valueOf(normalized); }
+        catch (IllegalArgumentException ignored) {
+            RecoveryAction alias = ACTION_ALIASES.get(normalized);
+            if (alias == null) throw new OllamaUnavailableException("INVALID_ACTION", "Ollama action is unsupported");
+            return alias;
+        }
     }
 
     private ObjectNode responseSchema() {
         ObjectNode schema = json.createObjectNode(); schema.put("type", "object");
         ObjectNode properties = schema.putObject("properties");
         properties.putObject("diagnosis").put("type", "string");
-        properties.putObject("recoverabilityScore").put("type", "number");
-        properties.putObject("recommendedAction").put("type", "string");
+        properties.putObject("recoverabilityScore").put("type", "number").put("minimum", 0).put("maximum", 1);
+        properties.putObject("recommendedAction").put("type", "string").putArray("enum")
+                .add("NO_ACTION").add("WAIT_AND_RETRY").add("SEND_REMINDER").add("CREATE_PAYMENT_LINK").add("ESCALATE_TO_HUMAN");
         properties.putObject("delayMinutes").put("type", "integer");
         ObjectNode reasons = properties.putObject("reasons"); reasons.put("type", "array"); reasons.putObject("items").put("type", "string");
         schema.putArray("required").add("diagnosis").add("recoverabilityScore").add("recommendedAction").add("delayMinutes").add("reasons");

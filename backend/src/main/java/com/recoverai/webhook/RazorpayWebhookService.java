@@ -40,13 +40,24 @@ public class RazorpayWebhookService {
                 if (linkId != null) recoveries.markPaymentCaptured(linkId, paymentId);
                 else recoveries.markPaymentCapturedForCase(recoveryCaseId, paymentId);
             }
-            if ("payment.failed".equals(eventType)) recoveries.recordPaymentFailure(recoveryCaseId);
+            if ("payment.failed".equals(eventType)) {
+                recoveries.recordPaymentFailure(recoveryCaseId);
+                detectExternalFailure(root, paymentId);
+            }
             log.info("Accepted Razorpay webhook eventId={}, eventType={}, status={}", eventId, eventType, status);
             return new WebhookResult(status.equals("ACCEPTED") ? "accepted" : "ignored", eventType);
         } catch (WebhookBadRequestException e) { throw e; }
         catch (Exception e) { throw new WebhookBadRequestException("Invalid JSON webhook payload"); }
     }
     private String firstText(JsonNode root, String... paths) { for (String path : paths) { JsonNode node=root; for (String part : path.split("\\.")) node=node.path(part); if (!node.isMissingNode() && !node.asText().isBlank()) return node.asText(); } return null; }
+    private void detectExternalFailure(JsonNode root, String paymentId) {
+        if (!properties.detection().razorpayFailureEnabled()) return;
+        JsonNode payment = root.path("payload").path("payment").path("entity");
+        boolean eligible = payment.path("notes").path("recoveryEligible").asBoolean(false);
+        if (!eligible) return;
+        boolean contactAllowed = payment.path("notes").path("recoveryContactAllowed").asBoolean(false);
+        recoveries.detectExternalPaymentFailure(paymentId, payment.path("amount").asLong(), payment.path("currency").asText("INR"), payment.path("method").asText("UNKNOWN"), payment.path("error_description").asText("razorpay_payment_failed"), contactAllowed);
+    }
     private boolean isSignatureValid(String signature, byte[] payload) {
         String secret = properties.razorpay().webhookSecret();
         if (secret == null || secret.isBlank()) throw new WebhookUnavailableException("Razorpay webhook secret is not configured");

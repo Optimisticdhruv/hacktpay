@@ -9,6 +9,15 @@ spring:
 server:
   port: 8080
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
 recoverai:
   storage-mode: ${RECOVERAI_STORAGE_MODE:memory}
   public-webhook-only: ${RECOVERAI_PUBLIC_WEBHOOK_ONLY:false}
@@ -35,3 +44,7 @@ recoverai:
     base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
     model: ${OLLAMA_MODEL:qwen2.5:3b}
     timeout-seconds: ${OLLAMA_TIMEOUT_SECONDS:30}
+  security:
+    auth-enabled: ${RECOVERAI_AUTH_ENABLED:false}
+  detection:
+    razorpay-failure-enabled: ${RECOVERAI_RAZORPAY_FAILURE_DETECTION_ENABLED:false}

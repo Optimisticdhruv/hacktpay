@@ -24,6 +24,13 @@ public class RecoveryService {
         log(saved.id(), "SYSTEM", "REVENUE_RISK_DETECTED", "Revenue risk case created", Map.of("amountAtRisk", saved.amountAtRisk(), "riskType", saved.riskType().name()));
         return saved;
     }
+    @Transactional public void detectExternalPaymentFailure(String razorpayPaymentId, long amountPaise, String currency, String paymentMethod, String failureReason, boolean contactAllowed) {
+        if (razorpayPaymentId == null || razorpayPaymentId.isBlank() || cases.findById("razorpay-failure-" + razorpayPaymentId).isPresent()) return;
+        Instant now = Instant.now();
+        RecoveryCase detected = new RecoveryCase("razorpay-failure-" + razorpayPaymentId, "RZP-" + razorpayPaymentId.substring(Math.max(0, razorpayPaymentId.length() - 8)).toUpperCase(), "External payment customer", null, contactAllowed, RiskType.PAYMENT_FAILURE, Math.max(0, amountPaise), currency == null || currency.isBlank() ? "INR" : currency, paymentMethod == null || paymentMethod.isBlank() ? "UNKNOWN" : paymentMethod, failureReason == null || failureReason.isBlank() ? "razorpay_payment_failed" : failureReason, TransactionStatus.FAILED, 0, 1, 0, false, RecoveryStatus.DETECTED, null, null, null, List.of(), null, 0, now, now, null);
+        cases.save(detected);
+        log(detected.id(), "RAZORPAY", "RAZORPAY_FAILURE_DETECTED", "Signed Razorpay failure event created a human-review recovery case", Map.of("paymentId", razorpayPaymentId, "amountAtRisk", amountPaise, "contactAllowed", contactAllowed));
+    }
     public RecoveryCase get(String id) { return cases.findById(id).orElseThrow(() -> new NoSuchElementException("Recovery case not found: " + id)); }
     public List<AuditEvent> audit(String id) { get(id); return audits.findByRecoveryCaseId(id); }
     @Transactional public RecoveryCase analyze(String id) {

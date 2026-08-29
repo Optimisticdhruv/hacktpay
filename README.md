@@ -91,3 +91,11 @@ OLLAMA_TIMEOUT_SECONDS=30
 ```
 
 The case detail screen displays **Strategy source: Ollama** after a valid response. If Ollama is unavailable, invalid, or times out, analysis still succeeds with **Strategy source: Deterministic Fallback** and its audit timeline records why. To use the recommended model instead, run `ollama pull qwen2.5:3b` and set `OLLAMA_MODEL=qwen2.5:3b`.
+
+## Production-hardening features
+
+- `GET /actuator/health` provides a safe liveness check; it returns no secret values.
+- Synthetic evaluation runs are stored in Firestore and available at `GET /api/evaluation/latest` and `GET /api/evaluation/history`.
+- Set `RECOVERAI_RAZORPAY_FAILURE_DETECTION_ENABLED=true` to create a human-review case from a signed `payment.failed` webhook **only** when Razorpay payment notes contain `recoveryEligible=true`. Customer contact remains disabled unless the trusted payment notes explicitly contain `recoveryContactAllowed=true`.
+- Set `RECOVERAI_AUTH_ENABLED=true` only after configuring Firebase Authentication. It then requires a Firebase ID token for merchant `/api/**` requests, while Razorpay's signed webhook and health endpoint remain available.
+- Container deployment artifacts are in `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`, and `deploy/README.md`. A permanent deployment still requires your hosting account, domain, and secret manager.

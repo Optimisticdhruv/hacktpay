@@ -6,6 +6,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import com.recoverai.service.RecoveryService;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
@@ -15,12 +16,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@TestPropertySource(properties = {"recoverai.storage-mode=memory", "recoverai.razorpay.webhook-secret=test-webhook-secret"})
+@TestPropertySource(properties = {"recoverai.storage-mode=memory", "recoverai.razorpay.webhook-secret=test-webhook-secret", "recoverai.detection.razorpay-failure-enabled=true"})
 class RazorpayWebhookControllerTest {
     @Autowired MockMvc mvc;
+    @Autowired RecoveryService recoveries;
     @Test void acceptsValidWebhookSignature() throws Exception { send("evt-valid-signature", "payment.captured").andExpect(status().isOk()).andExpect(jsonPath("$.status").value("accepted")); }
     @Test void acceptsValidPaymentCaptured() throws Exception { send("evt-captured", "payment.captured").andExpect(status().isOk()).andExpect(jsonPath("$.status").value("accepted")).andExpect(jsonPath("$.eventType").value("payment.captured")); }
     @Test void acceptsPaymentFailed() throws Exception { send("evt-failed", "payment.failed").andExpect(status().isOk()).andExpect(jsonPath("$.eventType").value("payment.failed")); }
+    @Test void createsHumanReviewCaseForExplicitlyEligibleExternalFailure() throws Exception {
+        String body = "{\"event\":\"payment.failed\",\"payload\":{\"payment\":{\"entity\":{\"id\":\"pay_external_1\",\"amount\":499900,\"currency\":\"INR\",\"method\":\"upi\",\"error_description\":\"timeout\",\"notes\":{\"recoveryEligible\":true}}}}}";
+        mvc.perform(post("/api/webhooks/razorpay").header("x-razorpay-event-id", "evt-external-failure").header("X-Razorpay-Signature", signature(body)).contentType("application/json").content(body)).andExpect(status().isOk());
+        org.junit.jupiter.api.Assertions.assertTrue(recoveries.list().stream().anyMatch(c -> c.id().equals("razorpay-failure-pay_external_1") && !c.contactAllowed()));
+    }
     @Test void acceptsOrderPaid() throws Exception { send("evt-order", "order.paid").andExpect(status().isOk()).andExpect(jsonPath("$.eventType").value("order.paid")); }
     @Test void acceptsPaymentLinkPaid() throws Exception { send("evt-payment-link-paid", "payment_link.paid").andExpect(status().isOk()).andExpect(jsonPath("$.eventType").value("payment_link.paid")); }
     @Test void acceptsUnknownEventWithoutProcessingIt() throws Exception { send("evt-unknown", "subscription.charged").andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ignored")); }
