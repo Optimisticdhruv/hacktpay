@@ -1,0 +1,32 @@
+spring:
+  config:
+    import: optional:file:./.env[.properties]
+  application:
+    name: recoverai
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+
+recoverai:
+  storage-mode: ${RECOVERAI_STORAGE_MODE:memory}
+  public-webhook-only: ${RECOVERAI_PUBLIC_WEBHOOK_ONLY:false}
+  firebase:
+    project-id: ${FIREBASE_PROJECT_ID:}
+    service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:${GOOGLE_APPLICATION_CREDENTIALS:}}
+  razorpay:
+    key-id: ${RAZORPAY_KEY_ID:}
+    key-secret: ${RAZORPAY_KEY_SECRET:}
+    webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  recovery:
+    max-attempts: 3
+    payment-link-expiry-hours: 24
+    ai-enabled: false
+  thresholds:
+    minimum-successful-payments-for-payment-link: ${RECOVERAI_MIN_SUCCESSFUL_PAYMENTS:1}
+    minimum-payment-failure-score: ${RECOVERAI_MIN_PAYMENT_FAILURE_SCORE:0.70}
+    minimum-abandonment-score: ${RECOVERAI_MIN_ABANDONMENT_SCORE:0.60}
+    minimum-overdue-score: ${RECOVERAI_MIN_OVERDUE_SCORE:0.60}
+    maximum-recovery-amount-paise: ${RECOVERAI_MAX_RECOVERY_AMOUNT_PAISE:5000000}

@@ -1,0 +1,67 @@
+# -----------------------------------------------------------------------------
+# RecoverAI: local credentials and environment configuration
+# Keep only committed *.example templates. Never commit real values.
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Firebase / Google Cloud service-account credentials and local SDK config
+firebase-service-account.json
+*service-account*.json
+*service_account*.json
+serviceAccountKey.json
+google-services.json
+GoogleService-Info.plist
+
+# Private keys, certificates, and credential exports
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+credentials.json
+secrets.json
+
+# Java / Spring Boot
+backend/target/
+target/
+application-local.yml
+application-local.yaml
+application-*.local.yml
+application-*.local.yaml
+*.class
+*.jar
+*.war
+*.ear
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Node / Vite / React
+frontend/node_modules/
+node_modules/
+frontend/dist/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE, operating system, logs, and local tooling
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+*.log
+logs/
+.m2/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~

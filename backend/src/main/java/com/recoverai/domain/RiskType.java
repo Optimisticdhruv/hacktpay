@@ -1,0 +1,2 @@
+package com.recoverai.domain;
+public enum RiskType { PAYMENT_FAILURE, CHECKOUT_ABANDONMENT, OVERDUE_RECEIVABLE, SUBSCRIPTION_FAILURE }
