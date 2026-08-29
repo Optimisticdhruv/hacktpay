@@ -76,3 +76,18 @@ POST /api/webhooks/razorpay
 ```
 
 After the test payment, verify the timeline contains `PAYMENT_CAPTURED` and `RECOVERY_COMPLETED`.
+
+## Optional local Ollama reasoning
+
+RecoverAI can use a local Ollama model for contextual strategy reasoning. No cloud API key is required. Ollama only recommends a strategy; configurable thresholds and the deterministic policy engine remain the authority that qualifies and authorizes every action.
+
+Add these values to `backend/.env` (the file is ignored by Git), then restart Spring Boot:
+
+```properties
+OLLAMA_ENABLED=true
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2:latest
+OLLAMA_TIMEOUT_SECONDS=30
+```
+
+The case detail screen displays **Strategy source: Ollama** after a valid response. If Ollama is unavailable, invalid, or times out, analysis still succeeds with **Strategy source: Deterministic Fallback** and its audit timeline records why. To use the recommended model instead, run `ollama pull qwen2.5:3b` and set `OLLAMA_MODEL=qwen2.5:3b`.

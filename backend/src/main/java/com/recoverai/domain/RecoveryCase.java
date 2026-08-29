@@ -9,6 +9,7 @@ public record RecoveryCase(
         TransactionStatus transactionStatus, int previousSuccessfulPayments, int previousFailedPayments,
         int attemptCount, boolean activePaymentLink, RecoveryStatus status, String diagnosis,
         Double recoverabilityScore, RecoveryAction recommendedAction, List<String> reasons,
+        StrategySource strategySource,
         long amountRecovered, Instant createdAt, Instant updatedAt, Instant resolvedAt) {
     public boolean paymentCaptured() { return transactionStatus == TransactionStatus.CAPTURED; }
 }

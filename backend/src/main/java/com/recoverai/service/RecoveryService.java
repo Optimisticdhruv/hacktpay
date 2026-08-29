@@ -4,7 +4,7 @@ import com.recoverai.domain.*;
 import com.recoverai.config.RecoveryProperties;
 import com.recoverai.razorpay.PaymentLinkClient;
 import com.recoverai.razorpay.PaymentLinkResult;
-import com.recoverai.recovery.FallbackStrategyEngine;
+import com.recoverai.recovery.RecoveryStrategyService;
 import com.recoverai.recovery.PolicyEngine;
 import com.recoverai.repository.AuditRepository;
 import com.recoverai.repository.RecoveryCaseRepository;
@@ -16,8 +16,8 @@ import java.util.*;
 
 @Service
 public class RecoveryService {
-    private final RecoveryCaseRepository cases; private final AuditRepository audits; private final FallbackStrategyEngine strategy; private final PolicyEngine policy; private final PaymentLinkClient paymentLinks; private final PaymentLinkRepository paymentLinkRecords; private final RecoveryProperties properties;
-    public RecoveryService(RecoveryCaseRepository cases, AuditRepository audits, FallbackStrategyEngine strategy, PolicyEngine policy, PaymentLinkClient paymentLinks, PaymentLinkRepository paymentLinkRecords, RecoveryProperties properties) { this.cases = cases; this.audits = audits; this.strategy = strategy; this.policy = policy; this.paymentLinks = paymentLinks; this.paymentLinkRecords = paymentLinkRecords; this.properties = properties; }
+    private final RecoveryCaseRepository cases; private final AuditRepository audits; private final RecoveryStrategyService strategy; private final PolicyEngine policy; private final PaymentLinkClient paymentLinks; private final PaymentLinkRepository paymentLinkRecords; private final RecoveryProperties properties;
+    public RecoveryService(RecoveryCaseRepository cases, AuditRepository audits, RecoveryStrategyService strategy, PolicyEngine policy, PaymentLinkClient paymentLinks, PaymentLinkRepository paymentLinkRecords, RecoveryProperties properties) { this.cases = cases; this.audits = audits; this.strategy = strategy; this.policy = policy; this.paymentLinks = paymentLinks; this.paymentLinkRecords = paymentLinkRecords; this.properties = properties; }
     public List<RecoveryCase> list() { return cases.findAll(); }
     public RecoveryCase create(RecoveryCase recoveryCase) {
         RecoveryCase saved = cases.save(recoveryCase);
@@ -28,9 +28,16 @@ public class RecoveryService {
     public List<AuditEvent> audit(String id) { get(id); return audits.findByRecoveryCaseId(id); }
     @Transactional public RecoveryCase analyze(String id) {
         RecoveryCase current = get(id); log(id, "AI_AGENT", "AI_ANALYSIS_STARTED", "Recovery analysis started", Map.of());
-        StrategyDecision d = strategy.decide(current);
-        RecoveryCase updated = copy(current, RecoveryStatus.ACTION_PENDING, d.diagnosis(), d.recoverabilityScore(), d.recommendedAction(), d.reasons(), current.attemptCount(), current.activePaymentLink(), current.amountRecovered(), null);
-        cases.save(updated); log(id, "AI_AGENT", "FALLBACK_STRATEGY_USED", "Deterministic strategy recommendation created", Map.of("action", d.recommendedAction(), "score", d.recoverabilityScore())); return updated;
+        RecoveryStrategyService.StrategyResolution resolution = strategy.decide(current);
+        StrategyDecision d = resolution.decision();
+        RecoveryCase updated = copy(current, RecoveryStatus.ACTION_PENDING, d.diagnosis(), d.recoverabilityScore(), d.recommendedAction(), d.reasons(), d.source(), current.attemptCount(), current.activePaymentLink(), current.amountRecovered(), null);
+        cases.save(updated);
+        if (d.source() == StrategySource.OLLAMA) {
+            log(id, "AI_AGENT", "AI_STRATEGY_GENERATED", "Ollama generated a contextual recovery recommendation", Map.of("provider", "OLLAMA", "model", properties.ollama().model(), "diagnosis", d.diagnosis(), "action", d.recommendedAction(), "score", d.recoverabilityScore()));
+        } else {
+            log(id, "AI_AGENT", "AI_FALLBACK_USED", "Deterministic strategy recommendation created", Map.of("reason", resolution.fallbackReason(), "action", d.recommendedAction(), "score", d.recoverabilityScore()));
+        }
+        return updated;
     }
     @Transactional public synchronized ExecutionResult execute(String id) {
         RecoveryCase current = get(id); RecoveryAction action = Optional.ofNullable(current.recommendedAction()).orElseThrow(() -> new IllegalStateException("Analyze this case before execution"));
@@ -59,6 +66,7 @@ public class RecoveryService {
         log(recoveryCaseId, "RAZORPAY", "PAYMENT_FAILED", "Razorpay reported a failed payment; recovery remains active", Map.of());
     }
     private void log(String id, String actor, String type, String msg, Map<String,Object> metadata) { audits.save(new AuditEvent(UUID.randomUUID().toString(), id, actor, type, msg, metadata, Instant.now())); }
-    private RecoveryCase copy(RecoveryCase c, RecoveryStatus status, String diagnosis, Double score, RecoveryAction action, List<String> reasons, int attempts, boolean activeLink, long recovered, Instant resolved) { return new RecoveryCase(c.id(), c.caseReference(), c.customerName(), c.customerEmail(), c.contactAllowed(), c.riskType(), c.amountAtRisk(), c.currency(), c.paymentMethod(), c.failureReason(), c.transactionStatus(), c.previousSuccessfulPayments(), c.previousFailedPayments(), attempts, activeLink, status, diagnosis == null ? c.diagnosis() : diagnosis, score == null ? c.recoverabilityScore() : score, action == null ? c.recommendedAction() : action, reasons == null ? c.reasons() : reasons, recovered, c.createdAt(), Instant.now(), resolved == null ? c.resolvedAt() : resolved); }
+    private RecoveryCase copy(RecoveryCase c, RecoveryStatus status, String diagnosis, Double score, RecoveryAction action, List<String> reasons, int attempts, boolean activeLink, long recovered, Instant resolved) { return copy(c, status, diagnosis, score, action, reasons, null, attempts, activeLink, recovered, resolved); }
+    private RecoveryCase copy(RecoveryCase c, RecoveryStatus status, String diagnosis, Double score, RecoveryAction action, List<String> reasons, StrategySource source, int attempts, boolean activeLink, long recovered, Instant resolved) { return new RecoveryCase(c.id(), c.caseReference(), c.customerName(), c.customerEmail(), c.contactAllowed(), c.riskType(), c.amountAtRisk(), c.currency(), c.paymentMethod(), c.failureReason(), c.transactionStatus(), c.previousSuccessfulPayments(), c.previousFailedPayments(), attempts, activeLink, status, diagnosis == null ? c.diagnosis() : diagnosis, score == null ? c.recoverabilityScore() : score, action == null ? c.recommendedAction() : action, reasons == null ? c.reasons() : reasons, source == null ? c.strategySource() : source, recovered, c.createdAt(), Instant.now(), resolved == null ? c.resolvedAt() : resolved); }
     public record ExecutionResult(RecoveryCase recoveryCase, PolicyResult policy, PaymentLinkResult paymentLink) {}
 }

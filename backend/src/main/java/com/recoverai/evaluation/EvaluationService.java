@@ -42,7 +42,7 @@ public class EvaluationService {
             RecoveryCase synthetic = new RecoveryCase("simulation-" + i, "SIM-" + (1000 + i), "Synthetic customer", null,
                     contactAllowed, type, amount, "INR", "SIMULATED", "synthetic_event", TransactionStatus.FAILED,
                     previousSuccesses, previousFailures, 0, false, RecoveryStatus.DETECTED, null, null, null,
-                    List.of(), 0, Instant.EPOCH, Instant.EPOCH, null);
+                    List.of(), null, 0, Instant.EPOCH, Instant.EPOCH, null);
             StrategyDecision decision = strategy.decide(synthetic);
             PolicyResult gate = policy.evaluate(synthetic, decision.recommendedAction());
             StrategyMetric current = metrics.get(type);

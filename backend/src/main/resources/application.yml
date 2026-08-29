@@ -30,3 +30,8 @@ recoverai:
     minimum-abandonment-score: ${RECOVERAI_MIN_ABANDONMENT_SCORE:0.60}
     minimum-overdue-score: ${RECOVERAI_MIN_OVERDUE_SCORE:0.60}
     maximum-recovery-amount-paise: ${RECOVERAI_MAX_RECOVERY_AMOUNT_PAISE:5000000}
+  ollama:
+    enabled: ${OLLAMA_ENABLED:false}
+    base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+    model: ${OLLAMA_MODEL:qwen2.5:3b}
+    timeout-seconds: ${OLLAMA_TIMEOUT_SECONDS:30}
