@@ -42,7 +42,7 @@ public class RazorpayWebhookService {
             }
             if ("payment.failed".equals(eventType)) {
                 recoveries.recordPaymentFailure(recoveryCaseId);
-                detectExternalFailure(root, paymentId);
+                detectExternalFailure(root, paymentId, recoveryCaseId);
             }
             log.info("Accepted Razorpay webhook eventId={}, eventType={}, status={}", eventId, eventType, status);
             return new WebhookResult(status.equals("ACCEPTED") ? "accepted" : "ignored", eventType);
@@ -50,13 +50,16 @@ public class RazorpayWebhookService {
         catch (Exception e) { throw new WebhookBadRequestException("Invalid JSON webhook payload"); }
     }
     private String firstText(JsonNode root, String... paths) { for (String path : paths) { JsonNode node=root; for (String part : path.split("\\.")) node=node.path(part); if (!node.isMissingNode() && !node.asText().isBlank()) return node.asText(); } return null; }
-    private void detectExternalFailure(JsonNode root, String paymentId) {
+    /**
+     * An external failure creates a review-only case. Failures from a RecoverAI
+     * payment link already belong to an existing case and must never create a
+     * second recovery workflow.
+     */
+    private void detectExternalFailure(JsonNode root, String paymentId, String recoveryCaseId) {
         if (!properties.detection().razorpayFailureEnabled()) return;
+        if (recoveryCaseId != null && !recoveryCaseId.isBlank()) return;
         JsonNode payment = root.path("payload").path("payment").path("entity");
-        boolean eligible = payment.path("notes").path("recoveryEligible").asBoolean(false);
-        if (!eligible) return;
-        boolean contactAllowed = payment.path("notes").path("recoveryContactAllowed").asBoolean(false);
-        recoveries.detectExternalPaymentFailure(paymentId, payment.path("amount").asLong(), payment.path("currency").asText("INR"), payment.path("method").asText("UNKNOWN"), payment.path("error_description").asText("razorpay_payment_failed"), contactAllowed);
+        recoveries.detectExternalPaymentFailure(paymentId, payment.path("amount").asLong(), payment.path("currency").asText("INR"), payment.path("method").asText("UNKNOWN"), payment.path("error_code").asText("razorpay_payment_failed"), false);
     }
     private boolean isSignatureValid(String signature, byte[] payload) {
         String secret = properties.razorpay().webhookSecret();

@@ -19,13 +19,17 @@ public class RecoveryCaseController {
     @GetMapping public List<RecoveryCase> list() { return service.list(); }
     @GetMapping("/{id}") public RecoveryCase get(@PathVariable String id) { return service.get(id); }
     @GetMapping("/{id}/audit") public List<AuditEvent> audit(@PathVariable String id) { return service.audit(id); }
+    @PostMapping("/{id}/review") public RecoveryCase review(@PathVariable String id, @RequestBody @Valid ReviewRecoveryCase request) { return service.reviewDetectedCase(id, request.customerName(), request.customerEmail(), request.contactAllowed()); }
     @PostMapping("/{id}/analyze") public RecoveryCase analyze(@PathVariable String id) { return service.analyze(id); }
     @PostMapping("/{id}/execute") public RecoveryService.ExecutionResult execute(@PathVariable String id) { return service.execute(id); }
     @PostMapping("/{id}/stop") public RecoveryCase stop(@PathVariable String id) { return service.stop(id); }
+    @PostMapping("/stop-open") public StopOpenCasesResponse stopOpenCases() { return new StopOpenCasesResponse(service.stopOpenCases()); }
     @PostMapping @ResponseStatus(HttpStatus.CREATED) public RecoveryCase create(@RequestBody @Valid CreateRecoveryCase request) {
         Instant now = Instant.now();
         RecoveryCase recoveryCase = new RecoveryCase(UUID.randomUUID().toString(), "RCV-" + (1000 + new Random().nextInt(9000)), request.customerName(), request.customerEmail(), request.contactAllowed(), request.riskType(), request.amountAtRisk(), "INR", request.paymentMethod(), request.failureReason(), request.transactionStatus(), request.previousSuccessfulPayments(), request.previousFailedPayments(), 0, false, RecoveryStatus.DETECTED, null, null, null, List.of(), null, 0, now, now, null);
         return service.create(recoveryCase);
     }
     public record CreateRecoveryCase(@NotBlank String customerName, String customerEmail, boolean contactAllowed, @NotNull RiskType riskType, long amountAtRisk, String paymentMethod, String failureReason, TransactionStatus transactionStatus, int previousSuccessfulPayments, int previousFailedPayments) {}
+    public record ReviewRecoveryCase(@NotBlank String customerName, String customerEmail, boolean contactAllowed) {}
+    public record StopOpenCasesResponse(int stoppedCount) {}
 }

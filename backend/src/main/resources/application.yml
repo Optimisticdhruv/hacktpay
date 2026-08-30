@@ -47,4 +47,4 @@ recoverai:
   security:
     auth-enabled: ${RECOVERAI_AUTH_ENABLED:false}
   detection:
-    razorpay-failure-enabled: ${RECOVERAI_RAZORPAY_FAILURE_DETECTION_ENABLED:false}
+    razorpay-failure-enabled: ${RECOVERAI_RAZORPAY_FAILURE_DETECTION_ENABLED:true}

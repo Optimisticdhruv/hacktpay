@@ -96,6 +96,6 @@ The case detail screen displays **Strategy source: Ollama** after a valid respon
 
 - `GET /actuator/health` provides a safe liveness check; it returns no secret values.
 - Synthetic evaluation runs are stored in Firestore and available at `GET /api/evaluation/latest` and `GET /api/evaluation/history`.
-- Set `RECOVERAI_RAZORPAY_FAILURE_DETECTION_ENABLED=true` to create a human-review case from a signed `payment.failed` webhook **only** when Razorpay payment notes contain `recoveryEligible=true`. Customer contact remains disabled unless the trusted payment notes explicitly contain `recoveryContactAllowed=true`.
+- `RECOVERAI_RAZORPAY_FAILURE_DETECTION_ENABLED=true` is the MVP default. Every signed, unlinked Razorpay `payment.failed` webhook creates one idempotent, Firestore-backed **human-review** case. Customer contact is disabled and no recovery action is sent automatically. A merchant must explicitly review the case and approve contact before it can qualify for a payment-link action. A failure belonging to an existing RecoverAI payment link only updates that existing case; it never creates a duplicate workflow.
 - Set `RECOVERAI_AUTH_ENABLED=true` only after configuring Firebase Authentication. It then requires a Firebase ID token for merchant `/api/**` requests, while Razorpay's signed webhook and health endpoint remain available.
 - Container deployment artifacts are in `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`, and `deploy/README.md`. A permanent deployment still requires your hosting account, domain, and secret manager.

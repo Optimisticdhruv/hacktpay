@@ -1,21 +1,224 @@
-import {useEffect,useMemo,useState} from 'react';
-import {createRoot} from 'react-dom/client';
+import { useEffect, useMemo, useState } from 'react';
+import { createRoot } from 'react-dom/client';
 import './styles.css';
-const api=import.meta.env.VITE_API_BASE_URL??'http://localhost:8080/api';
-type Case={id:string;caseReference:string;customerName:string;riskType:string;amountAtRisk:number;paymentMethod:string;status:string;diagnosis?:string;recoverabilityScore?:number;recommendedAction?:string;reasons?:string[];strategySource?:string;attemptCount:number;activePaymentLink:boolean;amountRecovered:number};
-type Audit={id:string;eventType:string;message:string;createdAt:string}; type Summary={totalRevenueAtRisk:number;revenueRecovered:number;recoveryRate:number;recoveredCases:number}; type Evaluation={dataClassification:string;datasetSize:number;seed:number;totalAtRisk:number;totalAttempted:number;totalRecovered:number;recoveryRate:number;policyApproved:number;policyBlocked:number;byRiskType:Record<string,{atRisk:number;attempted:number;recovered:number}>}; type EvaluationRun={id:string;result:Evaluation;createdAt:string};
-const label=(s?:string)=>s?.replaceAll('_',' ')??'—'; const money=(p:number)=>new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(p/100);
-async function get<T>(path:string,init?:RequestInit):Promise<T>{const r=await fetch(api+path,{headers:{'Content-Type':'application/json'},...init});if(!r.ok){const b=await r.json().catch(()=>null);throw new Error(b?.message??`Request failed (${r.status})`)}return r.json()}
-function Metric({value,name,good}:{value:string;name:string;good?:boolean}){return <article className={'metric '+(good?'good':'')}><small>{name}</small><strong>{value}</strong></article>}
-function App(){const [view,setView]=useState<'overview'|'cases'|'simulation'>('overview'),[cases,setCases]=useState<Case[]>([]),[summary,setSummary]=useState<Summary>(),[selected,setSelected]=useState(''),[audit,setAudit]=useState<Audit[]>([]),[evaluation,setEvaluation]=useState<Evaluation>(),[evaluationHistory,setEvaluationHistory]=useState<EvaluationRun[]>([]),[message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[showCreate,setShowCreate]=useState(false),[paymentUrl,setPaymentUrl]=useState(''),[draft,setDraft]=useState({customerName:'',customerEmail:'',amount:'4999'});const active=useMemo(()=>cases.filter(c=>!['RECOVERED','STOPPED','ESCALATED'].includes(c.status)),[cases]);const current=cases.find(c=>c.id===selected);
- const load=async()=>{setError('');try{const [a,b,h]=await Promise.all([get<Case[]>('/recovery-cases'),get<Summary>('/dashboard/summary'),get<EvaluationRun[]>('/evaluation/history').catch(()=>[])]);setCases(a);setSummary(b);setEvaluationHistory(h);setSelected(x=>x||a[0]?.id||'')}catch(e){setError(e instanceof Error?e.message:'Backend unavailable')}};
- const loadAudit=async(id:string)=>{try{setAudit(await get<Audit[]>(`/recovery-cases/${id}/audit`))}catch{}};useEffect(()=>{load()},[]);useEffect(()=>{if(selected)loadAudit(selected)},[selected]);useEffect(()=>{if(!selected||current?.status!=='WAITING_CUSTOMER')return;const timer=window.setInterval(()=>{load();loadAudit(selected)},5000);return()=>window.clearInterval(timer)},[selected,current?.status]);
- const act=async(action:'analyze'|'execute'|'stop')=>{if(!current)return;setBusy(true);setError('');try{const result=await get<any>(`/recovery-cases/${current.id}/${action}`,{method:'POST'});if(result?.paymentLink?.shortUrl)setPaymentUrl(result.paymentLink.shortUrl);setMessage(action==='analyze'?'Recommendation created.':action==='execute'?'Recovery action accepted. Continue to Razorpay Test Mode to complete the customer payment.':'Recovery action updated.');await load();await loadAudit(current.id)}catch(e){setError(e instanceof Error?e.message:'Action failed')}finally{setBusy(false)}};
- const createLiveCase=async()=>{const amount=Math.round(Number(draft.amount)*100);if(!draft.customerName.trim()||!Number.isFinite(amount)||amount<=0){setError('Enter a customer name and a valid positive amount.');return}setBusy(true);setError('');try{const created=await get<Case>('/recovery-cases',{method:'POST',body:JSON.stringify({customerName:draft.customerName.trim(),customerEmail:draft.customerEmail.trim(),contactAllowed:true,riskType:'PAYMENT_FAILURE',amountAtRisk:amount,paymentMethod:'UPI',failureReason:'customer_requested_retry',transactionStatus:'FAILED',previousSuccessfulPayments:3,previousFailedPayments:0})});setSelected(created.id);setShowCreate(false);setView('cases');setMessage('Live recovery case created. Analyze it, then create the policy-approved Razorpay payment link.');await load()}catch(e){setError(e instanceof Error?e.message:'Could not create recovery case')}finally{setBusy(false)}};
- const simulate=async()=>{setBusy(true);try{setEvaluation(await get<Evaluation>('/evaluation/run',{method:'POST',body:JSON.stringify({datasetSize:240,seed:42})}));setEvaluationHistory(await get<EvaluationRun[]>('/evaluation/history'));setView('simulation')}catch(e){setError(e instanceof Error?e.message:'Simulation failed')}finally{setBusy(false)}};
- return <div className="shell"><aside><div className="brand">RECOVER<span>AI</span></div><p>NOVACART<br/><small>Revenue operations</small></p>{(['overview','cases','simulation'] as const).map(x=><button className={view===x?'active':''} onClick={()=>setView(x)} key={x}>{x==='overview'?'Overview':x==='cases'?'Recovery cases':'Simulation lab'}</button>)}<footer>SAFETY MODE<br/><b>Policy controlled</b></footer></aside><main><header><div><em>REVENUE RECOVERY CONTROL CENTER</em><h1>{label(view)}</h1><p>Bounded recovery actions with deterministic policy checks.</p></div><button className="secondary" onClick={load}>Refresh</button></header>{error&&<div className="notice error">{error}</div>}{message&&<div className="notice">{message}</div>}
- {view==='overview'&&<><section className="live-card"><div><em>LIVE TEST MODE FLOW</em><h2>Create a recovery payment</h2><p>A human creates the recovery case here. Card details and OTP are collected only by Razorpay on its hosted payment page.</p></div><button onClick={()=>setShowCreate(!showCreate)}>{showCreate?'Close form':'Start live recovery'}</button></section>{showCreate&&<section className="create-form"><label>Customer name<input value={draft.customerName} onChange={e=>setDraft({...draft,customerName:e.target.value})} placeholder="Customer name"/></label><label>Email (optional)<input value={draft.customerEmail} onChange={e=>setDraft({...draft,customerEmail:e.target.value})} placeholder="customer@example.com"/></label><label>Recovery amount (INR)<input type="number" min="1" value={draft.amount} onChange={e=>setDraft({...draft,amount:e.target.value})}/></label><button onClick={createLiveCase} disabled={busy}>Create recovery case</button></section>}<section className="metrics"><Metric name="Revenue at risk" value={money(summary?.totalRevenueAtRisk??0)}/><Metric name="Revenue recovered" value={money(summary?.revenueRecovered??0)} good/><Metric name="Recovery rate" value={`${(summary?.recoveryRate??0).toFixed(2)}%`}/><Metric name="Active cases" value={String(active.length)}/></section><section className="columns"><article className="card"><h2>Recovery queue</h2><Rows cases={cases.slice(0,4)} select={x=>{setSelected(x);setView('cases')}}/></article><article className="card"><h2>Safety guardrails</h2><ul><li>Captured payments stop recovery</li><li>Contact permission is enforced</li><li>Duplicate links are blocked</li><li>Webhook events are idempotent</li></ul><button onClick={simulate} disabled={busy}>Run 240-case simulation</button></article></section></>}
- {view==='cases'&&<section className="casegrid"><article className="card"><h2>Firestore recovery queue</h2><Rows cases={cases} selected={selected} select={setSelected}/></article>{current&&<article className="detail"><div className="headline"><div><em>{current.caseReference}</em><h2>{current.customerName}</h2><p>{label(current.riskType)} · {current.paymentMethod}</p></div><b className="badge">{label(current.status)}</b></div><div className="amount"><small>Revenue at risk</small><strong>{money(current.amountAtRisk)}</strong>{current.amountRecovered>0&&<b>{money(current.amountRecovered)} recovered</b>}</div><section className="facts"><div><small>Strategy source</small><b>{current.strategySource?label(current.strategySource):'Analyze first'}</b></div><div><small>Diagnosis</small><b>{label(current.diagnosis)}</b></div><div><small>Recoverability</small><b>{current.recoverabilityScore===undefined?'Analyze first':`${Math.round(current.recoverabilityScore*100)}%`}</b></div><div><small>Action</small><b>{label(current.recommendedAction)}</b></div><div><small>Attempts</small><b>{current.attemptCount} / 3</b></div></section><section className="why"><h3>Decision rationale</h3>{(current.reasons??['No analysis yet.']).map(x=><p key={x}>{x}</p>)}</section><section className="actions">{!current.recommendedAction?<button onClick={()=>act('analyze')} disabled={busy}>Analyze case</button>:<button onClick={()=>act('execute')} disabled={busy||current.status==='RECOVERED'}>Execute approved action</button>}<button className="secondary" onClick={()=>act('stop')} disabled={busy||current.status==='RECOVERED'}>Stop recovery</button></section>{paymentUrl&&current.status==='WAITING_CUSTOMER'&&<section className="pay-next"><b>Customer payment step</b><p>Open the secure Razorpay Test Mode page. RecoverAI never sees the card number or OTP.</p><a href={paymentUrl} target="_blank" rel="noreferrer">Continue to Razorpay payment</a></section>}<section className="timeline"><h3>Audit timeline</h3>{audit.map(a=><div key={a.id}><b>{label(a.eventType)}</b><p>{a.message}</p><small>{new Date(a.createdAt).toLocaleString('en-IN')}</small></div>)}</section></article>}</section>}
- {view==='simulation'&&<article className="card simulation"><h2>Synthetic evaluation</h2><p>Simulated values never call Razorpay and are not real merchant revenue.</p><button onClick={simulate} disabled={busy}>Run simulation</button>{evaluation&&<><mark>SIMULATED · {evaluation.datasetSize} cases · seed {evaluation.seed}</mark><section className="metrics"><Metric name="At risk" value={money(evaluation.totalAtRisk)}/><Metric name="Attempted" value={money(evaluation.totalAttempted)}/><Metric name="Recovered" value={money(evaluation.totalRecovered)} good/><Metric name="Recovery rate" value={`${Math.round(evaluation.recoveryRate*100)}%`}/></section><p><b>{evaluation.policyApproved} approved</b> · {evaluation.policyBlocked} blocked by policy</p><div className="breakdown">{Object.entries(evaluation.byRiskType).map(([type,v])=><div key={type}><span>{label(type)}</span><i><b style={{width:`${v.atRisk?Math.round(v.recovered/v.atRisk*100):0}%`}}/></i><small>{money(v.recovered)} simulated recovered</small></div>)}</div></>}{evaluationHistory.length>0&&<section className="evaluation-history"><h3>Persisted evaluation history</h3>{evaluationHistory.map(run=><div key={run.id}><small>{new Date(run.createdAt).toLocaleString('en-IN')} · {run.result.datasetSize} cases</small><i><b style={{width:`${Math.round(run.result.recoveryRate*100)}%`}}/></i><strong>{Math.round(run.result.recoveryRate*100)}%</strong></div>)}</section>}</article>}
- </main></div>}
-function Rows({cases,select,selected}:{cases:Case[];select:(id:string)=>void;selected?:string}){return <div className="rows">{cases.map(c=><button className={selected===c.id?'selected':''} onClick={()=>select(c.id)} key={c.id}><span><b>{c.caseReference}</b><small>{label(c.riskType)}</small></span><span><b>{money(c.amountAtRisk)}</b><small>{label(c.status)}</small></span></button>)}</div>};createRoot(document.getElementById('root')!).render(<App/>);
+
+const api = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api';
+
+type RecoveryCase = {
+  id: string; caseReference: string; customerName: string; customerEmail?: string; contactAllowed: boolean;
+  riskType: string; amountAtRisk: number; paymentMethod: string; status: string; diagnosis?: string;
+  recoverabilityScore?: number; recommendedAction?: string; reasons?: string[]; strategySource?: string;
+  attemptCount: number; activePaymentLink: boolean; amountRecovered: number;
+};
+type Audit = { id: string; eventType: string; message: string; createdAt: string };
+type Summary = { totalRevenueAtRisk: number; revenueRecovered: number; recoveryRate: number; recoveredCases: number };
+type Evaluation = { dataClassification: string; datasetSize: number; seed: number; totalAtRisk: number; totalAttempted: number; totalRecovered: number; recoveryRate: number; policyApproved: number; policyBlocked: number; byRiskType: Record<string, { atRisk: number; attempted: number; recovered: number }> };
+type EvaluationRun = { id: string; result: Evaluation; createdAt: string };
+
+const label = (value?: string) => value?.replaceAll('_', ' ') ?? '—';
+const money = (paise: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(paise / 100);
+const statusClass = (status?: string) => `status-${(status ?? '').toLowerCase().replaceAll('_', '-')}`;
+const isDetectedRazorpayCase = (recoveryCase?: RecoveryCase) => Boolean(recoveryCase?.caseReference.startsWith('RZP-'));
+const actionLabel = (action?: string) => {
+  if (action === 'CREATE_PAYMENT_LINK') return 'Create secure payment link';
+  if (action === 'WAIT_AND_RETRY') return 'Record wait-and-retry decision';
+  if (action === 'SEND_REMINDER') return 'Record reminder decision';
+  if (action === 'ESCALATE_TO_HUMAN') return 'Escalate for human follow-up';
+  return 'Execute approved action';
+};
+
+async function get<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(api + path, { headers: { 'Content-Type': 'application/json' }, ...init });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.message ?? `Request failed (${response.status})`);
+  }
+  return response.json();
+}
+
+function Metric({ value, name, good }: { value: string; name: string; good?: boolean }) {
+  return <article className={`metric ${good ? 'good' : ''}`}><small>{name}</small><strong>{value}</strong></article>;
+}
+
+function OpenCasesMetric({ count, review, stopAll, busy }: { count: number; review: () => void; stopAll: () => void; busy: boolean }) {
+  return <article className="metric open-cases"><small>Open cases</small><strong>{count}</strong>{count > 0 ? <div><button onClick={review} style={{ background: '#eff5ff', borderColor: '#cbdcf3', color: '#245caa', padding: '6px 8px', fontSize: 11 }}>Review queue</button><button onClick={stopAll} disabled={busy} style={{ background: '#fff3f2', borderColor: '#f0ccc8', color: '#9b3933', padding: '6px 8px', fontSize: 11 }}>Stop all</button></div> : <span style={{ marginTop: 10, color: '#6d829b', fontSize: 11 }}>All workflows are resolved.</span>}</article>;
+}
+
+function App() {
+  const [view, setView] = useState<'overview' | 'cases' | 'simulation'>('overview');
+  const [cases, setCases] = useState<RecoveryCase[]>([]);
+  const [summary, setSummary] = useState<Summary>();
+  const [selected, setSelected] = useState('');
+  const [audit, setAudit] = useState<Audit[]>([]);
+  const [evaluation, setEvaluation] = useState<Evaluation>();
+  const [evaluationHistory, setEvaluationHistory] = useState<EvaluationRun[]>([]);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [paymentUrl, setPaymentUrl] = useState('');
+  const [draft, setDraft] = useState({ customerName: '', customerEmail: '', amount: '4999' });
+  const [reviewDraft, setReviewDraft] = useState({ customerName: '', customerEmail: '', contactAllowed: false });
+
+  const openCases = useMemo(() => cases.filter(recoveryCase => !['RECOVERED', 'STOPPED', 'ESCALATED'].includes(recoveryCase.status)), [cases]);
+  const queueCases = useMemo(() => [...openCases, ...cases.filter(recoveryCase => !openCases.some(openCase => openCase.id === recoveryCase.id))], [cases, openCases]);
+  const current = cases.find(recoveryCase => recoveryCase.id === selected);
+
+  const load = async () => {
+    setError('');
+    try {
+      const [recoveryCases, dashboardSummary, history] = await Promise.all([
+        get<RecoveryCase[]>('/recovery-cases'),
+        get<Summary>('/dashboard/summary'),
+        get<EvaluationRun[]>('/evaluation/history').catch(() => [])
+      ]);
+      setCases(recoveryCases);
+      setSummary(dashboardSummary);
+      setEvaluationHistory(history);
+      setSelected(currentId => currentId || recoveryCases[0]?.id || '');
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Backend unavailable');
+    }
+  };
+
+  const loadAudit = async (id: string) => {
+    try { setAudit(await get<Audit[]>(`/recovery-cases/${id}/audit`)); } catch { /* Case data remains available even when audit retrieval is delayed. */ }
+  };
+
+  const selectCase = (id: string) => {
+    const recoveryCase = cases.find(item => item.id === id);
+    setSelected(id);
+    setPaymentUrl('');
+    if (recoveryCase && isDetectedRazorpayCase(recoveryCase)) {
+      setReviewDraft({ customerName: recoveryCase.customerName === 'Razorpay detected payment' ? '' : recoveryCase.customerName, customerEmail: recoveryCase.customerEmail ?? '', contactAllowed: recoveryCase.contactAllowed });
+    }
+  };
+
+  useEffect(() => {
+    load();
+    const timer = window.setInterval(load, 10_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => { if (selected) loadAudit(selected); }, [selected]);
+  useEffect(() => {
+    if (!selected || current?.status !== 'WAITING_CUSTOMER') return;
+    const timer = window.setInterval(() => { load(); loadAudit(selected); }, 5_000);
+    return () => window.clearInterval(timer);
+  }, [selected, current?.status]);
+
+  const act = async (action: 'analyze' | 'execute' | 'stop') => {
+    if (!current) return;
+    setBusy(true); setError('');
+    try {
+      const result = await get<any>(`/recovery-cases/${current.id}/${action}`, { method: 'POST' });
+      if (result?.paymentLink?.shortUrl) setPaymentUrl(result.paymentLink.shortUrl);
+      setMessage(action === 'analyze' ? 'Recommendation created and policy-ready.' : action === 'execute' ? 'Approved recovery action completed.' : 'Recovery stopped by merchant.');
+      await load(); await loadAudit(current.id);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not update recovery action');
+    } finally { setBusy(false); }
+  };
+
+  const createLiveCase = async () => {
+    const amount = Math.round(Number(draft.amount) * 100);
+    if (!draft.customerName.trim() || !Number.isFinite(amount) || amount <= 0) {
+      setError('Enter a customer name and a valid positive amount.'); return;
+    }
+    setBusy(true); setError('');
+    try {
+      const created = await get<RecoveryCase>('/recovery-cases', {
+        method: 'POST', body: JSON.stringify({ customerName: draft.customerName.trim(), customerEmail: draft.customerEmail.trim(), contactAllowed: true, riskType: 'PAYMENT_FAILURE', amountAtRisk: amount, paymentMethod: 'UPI', failureReason: 'customer_requested_retry', transactionStatus: 'FAILED', previousSuccessfulPayments: 3, previousFailedPayments: 0 })
+      });
+      setSelected(created.id); setShowCreate(false); setView('cases');
+      setMessage('Live recovery case created. Analyze it before creating a policy-approved Razorpay payment link.');
+      await load();
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'Could not create recovery case');
+    } finally { setBusy(false); }
+  };
+
+  const reviewDetected = async () => {
+    if (!current || !reviewDraft.customerName.trim()) { setError('Enter the reviewed customer name.'); return; }
+    setBusy(true); setError('');
+    try {
+      await get<RecoveryCase>(`/recovery-cases/${current.id}/review`, { method: 'POST', body: JSON.stringify({ customerName: reviewDraft.customerName.trim(), customerEmail: reviewDraft.customerEmail.trim(), contactAllowed: reviewDraft.contactAllowed }) });
+      setMessage(reviewDraft.contactAllowed ? 'Human review saved. Contact is approved; analyze the case to continue.' : 'Human review saved. Contact remains disabled, so recovery stays review-only.');
+      await load(); await loadAudit(current.id);
+    } catch (reviewError) {
+      setError(reviewError instanceof Error ? reviewError.message : 'Could not save human review');
+    } finally { setBusy(false); }
+  };
+
+  const stopAllOpen = async () => {
+    if (openCases.length === 0) return;
+    if (!window.confirm(`Stop ${openCases.length} open recovery case${openCases.length === 1 ? '' : 's'}? This keeps every case and its audit trail, but prevents further recovery actions.`)) return;
+    setBusy(true); setError('');
+    try {
+      const result = await get<{ stoppedCount: number }>('/recovery-cases/stop-open', { method: 'POST' });
+      setPaymentUrl('');
+      setMessage(`${result.stoppedCount} open recovery case${result.stoppedCount === 1 ? '' : 's'} stopped. Audit trails were preserved.`);
+      await load();
+    } catch (stopError) {
+      setError(stopError instanceof Error ? stopError.message : 'Could not stop open recovery cases');
+    } finally { setBusy(false); }
+  };
+
+  const simulate = async () => {
+    setBusy(true);
+    try {
+      setEvaluation(await get<Evaluation>('/evaluation/run', { method: 'POST', body: JSON.stringify({ datasetSize: 240, seed: 42 }) }));
+      setEvaluationHistory(await get<EvaluationRun[]>('/evaluation/history'));
+      setView('simulation');
+    } catch (simulationError) {
+      setError(simulationError instanceof Error ? simulationError.message : 'Simulation failed');
+    } finally { setBusy(false); }
+  };
+
+  return <div className="shell">
+    <aside>
+      <div className="brand">RECOVER<span>AI</span></div>
+      <p>NOVACART<br /><small>Revenue operations</small></p>
+      {(['overview', 'cases', 'simulation'] as const).map(item => <button className={view === item ? 'active' : ''} onClick={() => setView(item)} key={item}>{item === 'overview' ? 'Overview' : item === 'cases' ? 'Recovery cases' : 'Simulation lab'}</button>)}
+      <footer>SAFETY MODE<br /><b>Policy controlled</b></footer>
+    </aside>
+    <main>
+      <header>
+        <div><em>REVENUE RECOVERY CONTROL CENTER</em><h1>{label(view)}</h1><p>Bounded recovery actions with deterministic policy checks.</p></div>
+        <button className="secondary" onClick={load}>Refresh</button>
+      </header>
+      {error && <div className="notice error">{error}</div>}
+      {message && <div className="notice">{message}</div>}
+
+      {view === 'overview' && <>
+        <section className="live-card"><div><em>LIVE TEST MODE FLOW</em><h2>Create a recovery payment</h2><p>A merchant opens a recovery case here. Card details and OTP are collected only by Razorpay on its hosted payment page.</p></div><button onClick={() => setShowCreate(!showCreate)}>{showCreate ? 'Close form' : 'Start live recovery'}</button></section>
+        {showCreate && <section className="create-form"><label>Customer name<input value={draft.customerName} onChange={event => setDraft({ ...draft, customerName: event.target.value })} placeholder="Customer name" /></label><label>Email (optional)<input value={draft.customerEmail} onChange={event => setDraft({ ...draft, customerEmail: event.target.value })} placeholder="customer@example.com" /></label><label>Recovery amount (INR)<input type="number" min="1" value={draft.amount} onChange={event => setDraft({ ...draft, amount: event.target.value })} /></label><button onClick={createLiveCase} disabled={busy}>Create recovery case</button></section>}
+        <section className="metrics"><Metric name="Revenue at risk" value={money(summary?.totalRevenueAtRisk ?? 0)} /><Metric name="Revenue recovered" value={money(summary?.revenueRecovered ?? 0)} good /><Metric name="Recovery rate" value={`${(summary?.recoveryRate ?? 0).toFixed(2)}%`} /><OpenCasesMetric count={openCases.length} review={() => setView('cases')} stopAll={stopAllOpen} busy={busy} /></section>
+        <section className="columns"><article className="card"><h2>Open recovery queue</h2><p className="queue-help">Cases needing a merchant or customer action appear first.</p><Rows cases={queueCases.slice(0, 4)} select={id => { selectCase(id); setView('cases'); }} /></article><article className="card"><h2>Safety guardrails</h2><ul><li>Captured payments stop recovery</li><li>Contact permission is enforced</li><li>Duplicate links are blocked</li><li>Webhook events are idempotent</li></ul><button onClick={simulate} disabled={busy}>Run 240-case simulation</button></article></section>
+      </>}
+
+      {view === 'cases' && <section className="casegrid">
+        <article className="card"><h2>Firestore recovery queue</h2><Rows cases={cases} selected={selected} select={selectCase} /></article>
+        {current && <article className="detail">
+          <div className="headline"><div><em>{current.caseReference}</em><h2>{current.customerName}</h2><p>{isDetectedRazorpayCase(current) ? 'Auto-detected from signed Razorpay event' : `${label(current.riskType)} · ${current.paymentMethod}`}</p></div><b className={`badge ${statusClass(current.status)}`}>{label(current.status)}</b></div>
+          <div className="amount"><small>Revenue at risk</small><strong>{money(current.amountAtRisk)}</strong>{current.amountRecovered > 0 && <b>{money(current.amountRecovered)} recovered</b>}</div>
+          <section className="facts"><div><small>Strategy source</small><b>{current.strategySource ? label(current.strategySource) : 'Analyze first'}</b></div><div><small>Diagnosis</small><b>{label(current.diagnosis)}</b></div><div><small>Recoverability</small><b>{current.recoverabilityScore === undefined ? 'Analyze first' : `${Math.round(current.recoverabilityScore * 100)}%`}</b></div><div><small>Action</small><b>{label(current.recommendedAction)}</b></div><div><small>Attempts</small><b>{current.attemptCount} / 3</b></div><div><small>Contact permission</small><b>{current.contactAllowed ? 'Approved' : 'Review required'}</b></div></section>
+          {isDetectedRazorpayCase(current) && current.status === 'DETECTED' && <section className="review-form"><h3>Merchant review required</h3><p>This signed Razorpay failure was detected automatically. Add approved details before any recovery action.</p><label>Customer name<input value={reviewDraft.customerName} onChange={event => setReviewDraft({ ...reviewDraft, customerName: event.target.value })} placeholder="Approved customer name" /></label><label>Email (optional)<input value={reviewDraft.customerEmail} onChange={event => setReviewDraft({ ...reviewDraft, customerEmail: event.target.value })} placeholder="customer@example.com" /></label><label><input type="checkbox" checked={reviewDraft.contactAllowed} onChange={event => setReviewDraft({ ...reviewDraft, contactAllowed: event.target.checked })} /> I confirm contact permission for this recovery</label><button onClick={reviewDetected} disabled={busy}>Save human review</button></section>}
+          <section className="why"><h3>Decision rationale</h3>{(current.reasons ?? ['No analysis yet.']).map(reason => <p key={reason}>{reason}</p>)}</section>
+          {current.status === 'ESCALATED' && <section className="why human-handoff"><h3>Why this needs a human</h3><p>RecoverAI paused automation because this case is outside the approved autonomous recovery boundary. Sending a payment link or contacting the customer without review could be inappropriate.</p><p><b>Case-specific reason:</b> {(current.reasons ?? ['This case requires a merchant decision before any further action.']).join(' ')}</p><h3>What happens next</h3><ol><li>Review the failed payment and customer context outside this dashboard.</li><li>Choose a compliant manual follow-up through your approved merchant process.</li><li>Use “Close human handoff” when no further RecoverAI action is required.</li></ol></section>}
+          <section className="actions">{current.status === 'ESCALATED' ? <button className="secondary" onClick={() => act('stop')} disabled={busy}>Close human handoff</button> : <>{!current.recommendedAction ? <button onClick={() => act('analyze')} disabled={busy || ['RECOVERED', 'STOPPED'].includes(current.status)}>Analyze case</button> : <button onClick={() => act('execute')} disabled={busy || ['RECOVERED', 'STOPPED'].includes(current.status)}>{actionLabel(current.recommendedAction)}</button>}<button className="secondary" onClick={() => act('stop')} disabled={busy || ['RECOVERED', 'STOPPED'].includes(current.status)}>Stop recovery</button></>}</section>
+          {paymentUrl && current.status === 'WAITING_CUSTOMER' && <section className="pay-next"><b>Customer payment step</b><p>Open the secure Razorpay Test Mode page. RecoverAI never sees the card number or OTP.</p><a href={paymentUrl} target="_blank" rel="noreferrer">Continue to Razorpay payment</a></section>}
+          <section className="timeline"><h3>Audit timeline</h3>{audit.map(event => <div key={event.id}><b>{label(event.eventType)}</b><p>{event.message}</p><small>{new Date(event.createdAt).toLocaleString('en-IN')}</small></div>)}</section>
+        </article>}
+      </section>}
+
+      {view === 'simulation' && <article className="card simulation"><h2>Synthetic evaluation</h2><p>Run a deterministic 240-case policy benchmark. It never contacts Razorpay or represents real merchant revenue.</p><button onClick={simulate} disabled={busy}>Run 240-case benchmark</button>{evaluation && <><mark>SIMULATED · {evaluation.datasetSize} cases · seed {evaluation.seed}</mark><section className="metrics"><Metric name="At risk" value={money(evaluation.totalAtRisk)} /><Metric name="Attempted" value={money(evaluation.totalAttempted)} /><Metric name="Recovered" value={money(evaluation.totalRecovered)} good /><Metric name="Recovery rate" value={`${Math.round(evaluation.recoveryRate * 100)}%`} /></section><p><b>{evaluation.policyApproved} approved</b> · {evaluation.policyBlocked} blocked by policy</p><div className="breakdown">{Object.entries(evaluation.byRiskType).map(([type, values]) => <div key={type}><span>{label(type)}</span><i><b style={{ width: `${values.atRisk ? Math.round(values.recovered / values.atRisk * 100) : 0}%` }} /></i><small>{money(values.recovered)} simulated recovered</small></div>)}</div></>}{evaluationHistory.length > 0 && <section className="evaluation-history"><h3>Recent evaluation runs</h3>{evaluationHistory.map(run => { const rate = Math.round(run.result.recoveryRate * 100); return <div key={run.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}><div style={{ display: 'grid', gap: 4 }}><b style={{ fontSize: 13 }}>Policy benchmark</b><small>{new Date(run.createdAt).toLocaleString('en-IN')} · {run.result.datasetSize} synthetic cases</small></div><div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '5px 10px', alignItems: 'center', minWidth: 220 }}><span style={{ fontSize: 11, color: '#6d829b' }}>Recovery rate</span><strong style={{ fontSize: 13, textAlign: 'right' }}>{rate}%</strong><i style={{ gridColumn: '1 / -1', width: '100%' }}><b style={{ width: `${rate}%` }} /></i></div></div>; })}</section>}</article>}
+    </main>
+  </div>;
+}
+
+function Rows({ cases, select, selected }: { cases: RecoveryCase[]; select: (id: string) => void; selected?: string }) {
+  return <div className="rows">{cases.map(recoveryCase => <button className={selected === recoveryCase.id ? 'selected' : ''} onClick={() => select(recoveryCase.id)} key={recoveryCase.id}><span><b>{recoveryCase.caseReference}</b><small>{isDetectedRazorpayCase(recoveryCase) ? 'AUTO-DETECTED · RAZORPAY' : label(recoveryCase.riskType)}</small></span><span><b>{money(recoveryCase.amountAtRisk)}</b><small className={`case-status ${statusClass(recoveryCase.status)}`}>{label(recoveryCase.status)}</small></span></button>)}</div>;
+}
+
+createRoot(document.getElementById('root')!).render(<App />);
