@@ -18,7 +18,7 @@ public class PolicyEngine {
         boolean contactRequired = action == RecoveryAction.CREATE_PAYMENT_LINK || action == RecoveryAction.SEND_REMINDER;
         checks.add(new PolicyCheck("CONTACT_ALLOWED", !contactRequired || c.contactAllowed(), "Customer contact permission is required"));
         checks.add(new PolicyCheck("NO_ACTIVE_DUPLICATE_LINK", action != RecoveryAction.CREATE_PAYMENT_LINK || !c.activePaymentLink(), "An equivalent payment link must not be active"));
-        checks.add(new PolicyCheck("CASE_IS_ACTIVE", c.status() != RecoveryStatus.STOPPED && c.status() != RecoveryStatus.RECOVERED, "Stopped or recovered cases cannot be acted on"));
+        checks.add(new PolicyCheck("CASE_IS_ACTIVE", c.status() != RecoveryStatus.STOPPED && c.status() != RecoveryStatus.RECOVERED && c.status() != RecoveryStatus.UNRECOVERABLE && c.status() != RecoveryStatus.ESCALATED, "Resolved or human-owned cases cannot be acted on automatically"));
         checks.add(new PolicyCheck("VALID_AMOUNT", c.amountAtRisk() > 0, "Amount at risk must be positive"));
         checks.add(new PolicyCheck("SUPPORTED_ACTION", action != null, "Action must be recognised"));
         PolicyCheck failed = checks.stream().filter(check -> !check.passed()).findFirst().orElse(null);

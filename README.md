@@ -34,6 +34,9 @@ All monetary values use paise. The seeded `RCV-1048` case is ₹4,999 (`499900` 
 - A deterministic, policy-bounded recovery strategy engine. This is the safe fallback while no live LLM provider is configured.
 - Razorpay Test Mode Payment Links, paid-link reconciliation, and signed Razorpay webhook processing.
 - A merchant console with live recovery KPIs, case details, policy-controlled actions, and audit timeline.
+- Live intake for payment failure, checkout abandonment, subscription failure, and overdue receivable cases, plus a one-click demo pack and queue filters.
+- In-app, Firestore-backed retry-review and customer-reminder tasks. These are bounded merchant tasks for the MVP; no external message is sent automatically.
+- Recorded human-handoff outcomes: promise to pay, recovered externally, or not recoverable.
 - A synthetic evaluation endpoint. It never calls Razorpay and every response is labelled `SIMULATED`.
 
 ## Run the full project
