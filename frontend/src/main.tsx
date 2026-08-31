@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Activity, Bell, Check, ChevronDown, Database, FlaskConical, LayoutDashboard, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-react';
 import './styles.css';
 
 const api = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api';
@@ -45,11 +46,19 @@ async function get<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function Metric({ value, name, good }: { value: string; name: string; good?: boolean }) {
-  return <article className={`metric ${good ? 'good' : ''}`}><small>{name}</small><strong>{value}</strong></article>;
+  return <article className={`metric ${good ? 'good' : ''}`}><span className="metric-orb" /><small>{name}</small><strong>{value}</strong></article>;
 }
 
 function OpenCasesMetric({ count, review, stopAll, busy }: { count: number; review: () => void; stopAll: () => void; busy: boolean }) {
   return <article className="metric open-cases"><small>Open cases</small><strong>{count}</strong>{count > 0 ? <div><button onClick={review} style={{ background: '#eff5ff', borderColor: '#cbdcf3', color: '#245caa', padding: '6px 8px', fontSize: 11 }}>Review queue</button><button onClick={stopAll} disabled={busy} style={{ background: '#fff3f2', borderColor: '#f0ccc8', color: '#9b3933', padding: '6px 8px', fontSize: 11 }}>Stop all</button></div> : <span style={{ marginTop: 10, color: '#6d829b', fontSize: 11 }}>All workflows are resolved.</span>}</article>;
+}
+
+function StyledSelect({ value, options, onChange, ariaLabel }: { value: string; options: string[]; onChange: (value: string) => void; ariaLabel: string }) {
+  const [open, setOpen] = useState(false);
+  return <div className="styled-select">
+    <button type="button" className="select-trigger" aria-label={ariaLabel} aria-expanded={open} onClick={() => setOpen(!open)}>{label(value)}<ChevronDown size={16} /></button>
+    {open && <div className="select-menu" role="listbox" aria-label={ariaLabel}>{options.map(option => <button type="button" role="option" aria-selected={value === option} key={option} className={value === option ? 'chosen' : ''} onClick={() => { onChange(option); setOpen(false); }}><span>{label(option)}</span>{value === option && <Check size={15} />}</button>)}</div>}
+  </div>;
 }
 
 function App() {
@@ -231,22 +240,26 @@ function App() {
 
   return <div className="shell">
     <aside>
-      <div className="brand">RECOVER<span>AI</span></div>
-      <p>NOVACART<br /><small>Revenue operations</small></p>
-      {(['overview', 'cases', 'simulation'] as const).map(item => <button className={view === item ? 'active' : ''} onClick={() => setView(item)} key={item}>{item === 'overview' ? 'Overview' : item === 'cases' ? 'Recovery cases' : 'Simulation lab'}</button>)}
-      <footer>SAFETY MODE<br /><b>Policy controlled</b></footer>
+      <div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>RECOVER<span>AI</span></span></div>
+      <div className="workspace"><span className="workspace-dot" /><div><b>NOVACART</b><small>Revenue operations</small></div></div>
+      <nav><p>WORKSPACE</p>{(['overview', 'cases', 'simulation'] as const).map(item => {
+        const Icon = item === 'overview' ? LayoutDashboard : item === 'cases' ? Activity : FlaskConical;
+        return <button className={view === item ? 'active' : ''} onClick={() => setView(item)} key={item}><Icon size={17} /><span>{item === 'overview' ? 'Overview' : item === 'cases' ? 'Recovery cases' : 'Simulation lab'}</span>{item === 'cases' && <i>{openCases.length}</i>}</button>;
+      })}</nav>
+      <div className="sidebar-integrations"><p>CONNECTED</p><span><Database size={15} /> Firestore <b>Live</b></span><span><ShieldCheck size={15} /> Policy controls</span></div>
+      <footer><span><ShieldCheck size={15} /> SAFETY MODE</span><b>Policy controlled</b></footer>
     </aside>
     <main>
       <header>
-        <div><em>REVENUE RECOVERY CONTROL CENTER</em><h1>{label(view)}</h1><p>Bounded recovery actions with deterministic policy checks.</p></div>
-        <button className="secondary" onClick={load}>Refresh</button>
+        <div className="header-copy"><em>REVENUE RECOVERY CONTROL CENTER</em><h1>{label(view)}</h1><p>Safe, auditable recovery actions across your revenue operations.</p></div>
+        <div className="header-actions"><label className="search"><Search size={16} /><input aria-label="Search recovery cases" placeholder="Search cases or customers" /></label><span className="environment"><span />Test mode</span><button className="icon-button" aria-label="Notifications"><Bell size={17} /></button><button className="secondary refresh" onClick={load}><RefreshCw size={15} /> Refresh</button></div>
       </header>
       {error && <div className="notice error">{error}</div>}
       {message && <div className="notice">{message}</div>}
 
       {view === 'overview' && <>
-        <section className="live-card"><div><em>LIVE RECOVERY INTAKE</em><h2>Start a revenue-risk workflow</h2><p>Create payment, checkout, subscription, or invoice recovery cases. Card details and OTP remain only on Razorpay’s hosted payment page.</p></div><div><button className="secondary" onClick={addDemoPack} disabled={busy}>Add demo pack</button><button onClick={() => setShowCreate(!showCreate)}>{showCreate ? 'Close form' : 'Start live recovery'}</button></div></section>
-        {showCreate && <section className="create-form"><label>Risk type<select style={{ height: 40, border: '1px solid #cad8e8', borderRadius: 7, padding: '0 9px', color: '#18314f', background: '#fff', font: 'inherit' }} value={draft.riskType} onChange={event => setDraft({ ...draft, riskType: event.target.value })}>{['PAYMENT_FAILURE', 'CHECKOUT_ABANDONMENT', 'SUBSCRIPTION_FAILURE', 'OVERDUE_RECEIVABLE'].map(type => <option key={type} value={type}>{label(type)}</option>)}</select></label><label>Customer name<input value={draft.customerName} onChange={event => setDraft({ ...draft, customerName: event.target.value })} placeholder="Customer name" /></label><label>Email (optional)<input value={draft.customerEmail} onChange={event => setDraft({ ...draft, customerEmail: event.target.value })} placeholder="customer@example.com" /></label><label>Revenue at risk (INR)<input type="number" min="1" value={draft.amount} onChange={event => setDraft({ ...draft, amount: event.target.value })} /></label><button onClick={createLiveCase} disabled={busy}>Create risk case</button></section>}
+        <section className="live-card"><div className="live-copy"><span className="live-icon"><Sparkles size={18} /></span><div><em>LIVE RECOVERY INTAKE</em><h2>Start a revenue-risk workflow</h2><p>Create payment, checkout, subscription, or invoice recovery cases. Card details and OTP remain only on Razorpay’s hosted payment page.</p></div></div><div className="live-actions"><button className="secondary" onClick={addDemoPack} disabled={busy}>Add demo pack</button><button onClick={() => setShowCreate(!showCreate)}>{showCreate ? 'Close form' : 'Start live recovery'}</button></div></section>
+        {showCreate && <section className="create-form"><label>Risk type<StyledSelect ariaLabel="Risk type" value={draft.riskType} options={['PAYMENT_FAILURE', 'CHECKOUT_ABANDONMENT', 'SUBSCRIPTION_FAILURE', 'OVERDUE_RECEIVABLE']} onChange={riskType => setDraft({ ...draft, riskType })} /></label><label>Customer name<input value={draft.customerName} onChange={event => setDraft({ ...draft, customerName: event.target.value })} placeholder="Customer name" /></label><label>Email (optional)<input value={draft.customerEmail} onChange={event => setDraft({ ...draft, customerEmail: event.target.value })} placeholder="customer@example.com" /></label><label>Revenue at risk (INR)<input type="number" min="1" value={draft.amount} onChange={event => setDraft({ ...draft, amount: event.target.value })} /></label><button onClick={createLiveCase} disabled={busy}>Create risk case</button></section>}
         <section className="metrics"><Metric name="Revenue currently at risk" value={money(summary?.totalRevenueAtRisk ?? 0)} /><Metric name="Revenue recovered" value={money(summary?.revenueRecovered ?? 0)} good /><Metric name="Recovery rate (tracked)" value={`${(summary?.recoveryRate ?? 0).toFixed(2)}%`} /><OpenCasesMetric count={summary?.activeCases ?? openCases.length} review={() => setView('cases')} stopAll={stopAllOpen} busy={busy} /></section>
         <section className="columns"><article className="card"><h2>Open recovery queue</h2><p className="queue-help">Cases needing a merchant or customer action appear first.</p><Rows cases={queueCases.slice(0, 4)} select={id => { selectCase(id); setView('cases'); }} /></article><article className="card"><h2>Safety guardrails</h2><ul><li>Captured payments stop recovery</li><li>Contact permission is enforced</li><li>Duplicate links are blocked</li><li>Webhook events are idempotent</li></ul><button onClick={simulate} disabled={busy}>Run 240-case simulation</button></article></section>
       </>}
