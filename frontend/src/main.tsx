@@ -18,7 +18,11 @@ type EvaluationRun = { id: string; result: Evaluation; createdAt: string };
 type RecoveryTask = { id: string; type: string; status: string; dueAt: string; completedAt?: string };
 
 const label = (value?: string) => value?.replaceAll('_', ' ') ?? '—';
-const money = (paise: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(paise / 100);
+const money = (paise: number) => {
+  const rupees = paise / 100;
+  if (!Number.isFinite(rupees)) return 'Unavailable';
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0, ...(Math.abs(rupees) >= 100_000_000 ? { notation: 'compact', maximumFractionDigits: 1 } : {}) }).format(rupees);
+};
 const statusClass = (status?: string) => `status-${(status ?? '').toLowerCase().replaceAll('_', '-')}`;
 const isDetectedRazorpayCase = (recoveryCase?: RecoveryCase) => Boolean(recoveryCase?.caseReference.startsWith('RZP-'));
 const actionLabel = (action?: string) => {
